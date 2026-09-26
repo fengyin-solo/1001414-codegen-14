@@ -1,9 +1,10 @@
-"""坑槽修补接口：维护修补单，覆盖安排修补、确认完成、取消修补等动作。"""
+"""坑槽修补接口：维护修补单，覆盖安排修补、确认完成、取消修补等动作，并提供清单导出。"""
 from __future__ import annotations
 
-from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from app.schemas import ActionResult, EntryPayload, PageResult
 from app.services.pothole import PotholeService
@@ -28,6 +29,35 @@ def list_entries(
         raise HTTPException(status_code=400, detail="每页最多 200 条，请缩小分页范围")
     items, total = service.list_entries(keyword=keyword, status=status, page=page, size=size)
     return PageResult(items=items, total=total, page=page, size=size)
+
+
+@router.get("/stats")
+def get_stats() -> dict:
+    """统计卡口径与列表总数同源，导出后用它和文件条数核对。"""
+    return service.stats()
+
+
+@router.get("/export/status")
+def export_status() -> dict:
+    """查看已生成清单与当前数据是否同批：刷新页面后靠它发现口径过期。"""
+    return service.export_status()
+
+
+@router.post("/export")
+def generate_export() -> dict:
+    """按当前全部修补单生成清单；同批材料重复生成只复用同一份，数据变了以最近一次为准。"""
+    return service.generate_export()
+
+
+@router.get("/export/download")
+def download_export() -> Response:
+    """下载唯一一份坑槽修补清单（UTF-8 BOM，Excel 可直接打开）。"""
+    filename, content = service.download_export()
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @router.get("/{entry_id}", response_model=dict)
@@ -56,10 +86,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出坑槽修补清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "pothole", "total": total, "items": items}
