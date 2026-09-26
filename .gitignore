@@ -85,3 +85,6 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# ===== 导出文件（运行期生成，最近一份覆盖旧文件） =====
+backend/app/exports/
